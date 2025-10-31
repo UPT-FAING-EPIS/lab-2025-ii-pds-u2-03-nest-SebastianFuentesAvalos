@@ -35,6 +35,11 @@ jobs:
         cd payment
         npm ci
 
+    - name: Install jest-junit reporter
+      run: |
+        cd payment
+        npm install --save-dev jest-junit
+
     - name: Run unit tests with coverage and JUnit report
       run: |
         cd payment
@@ -92,6 +97,11 @@ jobs:
       run: |
         cd atm
         npm ci
+
+    - name: Install jest-junit reporter
+      run: |
+        cd atm
+        npm install --save-dev jest-junit
 
     - name: Run unit tests with coverage and JUnit report
       run: |
