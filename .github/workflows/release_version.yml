@@ -1,0 +1,197 @@
+name: Create Release Version
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies for payment
+      run: |
+        cd payment
+        npm ci
+
+    - name: Install dependencies for atm
+      run: |
+        cd atm
+        npm ci
+
+    - name: Run tests for payment
+      run: |
+        cd payment
+        npm run test:cov
+
+    - name: Run tests for atm
+      run: |
+        cd atm
+        npm run test:cov
+
+    - name: Build payment domain library
+      run: |
+        cd payment/libs/domain
+        npm run build
+
+    - name: Build atm domain library
+      run: |
+        cd atm/libs/domain
+        npm run build
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update package versions
+      run: |
+        cd payment/libs/domain
+        npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+        cd ../../atm/libs/domain
+        npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+
+    - name: Create distribution packages
+      run: |
+        # Create packages for payment
+        cd payment/libs/domain
+        tar -czf ../../payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz .
+        zip -r ../../payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip .
+        
+        # Create packages for atm
+        cd ../../../atm/libs/domain
+        tar -czf ../../atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz .
+        zip -r ../../atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip .
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Generate a simple changelog from commit messages
+        CHANGELOG=$(git log --pretty=format:"- %s (%h)" --since="$(git tag --sort=-creatordate | head -2 | tail -1 || echo '1 month ago')" --no-merges)
+        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.VERSION }}
+        release_name: PDS Behavioral Patterns v${{ steps.get_version.outputs.VERSION }}
+        body: |
+          # Lab PDS U2-03 - Patrones de Comportamiento v${{ steps.get_version.outputs.VERSION }}
+          
+          ## 🚀 Features
+          
+          ### � Payment (Strategy Pattern)
+          - Implementación del patrón Strategy para sistema de pagos
+          - Soporte para múltiples métodos de pago (Credit Card, Debit Card, Cash)
+          - Contexto de pago que permite cambiar estrategias dinámicamente
+          - Documentación completa con JSDoc
+          
+          ### 🏧 ATM (Command Pattern)
+          - Implementación del patrón Command para operaciones de cajero automático
+          - Comandos para depósitos y retiros encapsulados
+          - Separación entre invocador (ATM) y receptor (Account)
+          - Cobertura de pruebas unitarias completa
+          
+          ## 📋 Changes
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ## 📦 Package Information
+          
+          ### Payment Package
+          - Package Name: `payment_fuentesavalos`
+          - Version: `${{ steps.get_version.outputs.VERSION }}`
+          - Pattern: Strategy Design Pattern
+          
+          ### ATM Package
+          - Package Name: `atm_fuentesavalos`
+          - Version: `${{ steps.get_version.outputs.VERSION }}`
+          - Pattern: Command Design Pattern
+          
+          - Author: Sebastian Fuentes Avalos
+          - Course: Patrones de Diseño de Software - UPT
+          
+          ## 🛠️ Installation
+          ```bash
+          # Payment package
+          npm install @sebastianfuentesavalos/payment_fuentesavalos@${{ steps.get_version.outputs.VERSION }}
+          
+          # ATM package
+          npm install @sebastianfuentesavalos/atm_fuentesavalos@${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          ## 📚 Documentation
+          - Strategy Pattern Implementation: Payment module
+          - Command Pattern Implementation: ATM module
+          - Full API Documentation available in GitHub Pages
+        draft: false
+        prerelease: false
+
+    - name: Upload Payment TAR.GZ Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./payment/payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        asset_name: payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Payment ZIP Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./payment/payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_name: payment_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
+
+    - name: Upload ATM TAR.GZ Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./atm/atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        asset_name: atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload ATM ZIP Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./atm/atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_name: atm_fuentesavalos-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
