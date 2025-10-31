@@ -29,5 +29,11 @@
         "libs/domain/src/*"
       ]
     }
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "documentation",
+    "coverage"
+  ]
 }
